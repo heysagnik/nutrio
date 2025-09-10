@@ -36,9 +36,10 @@ export function Card({ children, ...rest }: { children: ReactNode } & HTMLAttrib
       style={{
         background: BG,
         border: `1px solid ${BORDER}`,
-        borderRadius: 14,
+        borderRadius: 24,
         padding: 20,
-        boxShadow: rest.style?.boxShadow ?? '0 6px 18px rgba(16,24,40,0.04)',
+        boxShadow: rest.style?.boxShadow ?? '0 8px 24px rgba(16,24,40,0.05)',
+        transition: 'box-shadow 200ms ease-in-out, transform 200ms ease-in-out',
         ...rest.style,
       }}
     >
@@ -68,6 +69,7 @@ export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { varian
     cursor: 'pointer',
     fontWeight: 600,
     fontSize: 14,
+    transition: 'background-color 150ms ease-in-out, border-color 150ms ease-in-out',
   } as const
   const style =
     variant === 'ghost'
@@ -84,6 +86,42 @@ export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { varian
     >
       {children}
     </button>
+  )
+}
+
+export function HoverBox({ children, ...rest }: { children: ReactNode } & HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      {...rest}
+      onMouseEnter={(e) =>
+        Object.assign((e.currentTarget as HTMLDivElement).style, { boxShadow: '0 10px 24px rgba(16,24,40,0.08)', transform: 'translateY(-2px)' })
+      }
+      onMouseLeave={(e) =>
+        Object.assign((e.currentTarget as HTMLDivElement).style, { boxShadow: '0 6px 18px rgba(16,24,40,0.04)', transform: 'translateY(0px)' })
+      }
+      style={{
+        transition: 'box-shadow 160ms ease, transform 160ms ease',
+        ...rest.style,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+export function Interactive({ children, ...rest }: { children: ReactNode } & HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      {...rest}
+      onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLDivElement).style, { transform: 'scale(1.03)' })}
+      onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLDivElement).style, { transform: 'scale(1)' })}
+      style={{
+        transition: 'transform 160ms ease',
+        ...rest.style,
+      }}
+    >
+      {children}
+    </div>
   )
 }
 
