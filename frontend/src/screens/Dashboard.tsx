@@ -294,11 +294,11 @@ export function Dashboard() {
         
         {/* Tile: Today's Nutrition (prominent) */}
         <div style={{ gridColumn: isMobile ? 'auto' : isDesktop ? 'span 5' : isTablet ? 'span 8' : 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '8px 0 12px' }}>
+            <Heading>Today's Nutrition</Heading>
+            
+        </div>
           <Card style={{ padding: isMobile ? 12 : 24, boxShadow: isDesktop ? '0 14px 40px rgba(16,24,40,0.08)' : undefined }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ fontWeight: 600, color: '#111827' }}>Today's Nutrition</div>
-              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280' }} aria-label="more">⋯</button>
-            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 12 }}>
               <div style={{ display: 'grid', placeItems: 'center', gap: 10, flex: '1 1 80px' }}>
                 <ProgressRing value={62} color="#f59e0b" label="Protein" size={ringSize} stroke={ringStroke} />
@@ -319,45 +319,75 @@ export function Dashboard() {
                 </div>
               </div>
             </div>
-
-            <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 12, display: 'grid', gap: 10 }}>
-              <div>
-                <div style={{ fontWeight: 600, color: '#111827' }}>Calories & Macros</div>
-                <Subtext>1,240 kcal / 760 kcal left</Subtext>
-              </div>
-              <div>
-                <div style={{ fontWeight: 600, color: '#111827' }}>Protein Intake</div>
-                <Subtext>65g taken / 35g remaining</Subtext>
-              </div>
-              <div>
-                <div style={{ fontWeight: 600, color: '#111827' }}>Hydration Tracker</div>
-                <Subtext>9/10 glasses today</Subtext>
-              </div>
-            </div>
         </Card>
         </div>
 
-        {/* Tile: Quick actions (full width, below breakfast) */}
-        {/* <div style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}>
-          <Card style={{ padding: isMobile ? 12 : 20 }}>
-            <div style={{ fontWeight: 700, marginBottom: 12 }}>Quick Actions</div>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${actionMin}px, 1fr))`, gap: isMobile ? 10 : 16 }}>
-              {[{ t: 'Ask AI', badge: 'New' }, { t: 'Plan Meal' }, { t: 'Recipes' }, { t: 'Market List' }, { t: 'Groceries' }, { t: 'Workouts' }].map((a) => (
-                <div key={a.t} style={{ textAlign: 'center', paddingTop: 6, cursor: 'pointer' }}>
-                  <Interactive>
-                    <div style={{ position: 'relative' }}>
-                      <div style={{ width: actionSize, height: actionSize, margin: '0 auto', borderRadius: 16, border: '1px solid #e5e7eb', background: '#fff', display: 'grid', placeItems: 'center', fontSize: isMobile ? 18 : 22 }}>🍽️</div>
-                      {a.badge ? (
-                        <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', background: '#ef4444', color: '#fff', borderRadius: 999, fontSize: 11, padding: '2px 8px' }}>New</div>
-                      ) : null}
-                    </div>
-                  </Interactive>
-                  <div style={{ fontSize: 13, marginTop: 8, color: '#111827', fontWeight: 600 }}>{a.t}</div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div> */}
+        
+      </div>
+
+      {/* Floating Quick Action Footer */}
+      <div style={{
+        position: 'fixed',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        bottom: isMobile ? 18 : 26,
+        zIndex: 60,
+        width: '100%',
+        maxWidth: 420,
+        padding: '0 16px',
+      }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'center' }}>
+          <Interactive>
+            <button
+              aria-label="Open camera"
+              onClick={() => console.log('Open camera')}
+              style={{
+                width: isMobile ? 48 : 52,
+                height: isMobile ? 48 : 52,
+                borderRadius: 999,
+                border: '1px solid #e6eef3',
+                background: '#fff',
+                display: 'grid',
+                placeItems: 'center',
+                boxShadow: '0 8px 20px rgba(16,24,40,0.06)',
+                cursor: 'pointer',
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                <path d="M23 19V7a2 2 0 00-2-2h-3.17a2 2 0 01-1.414-.586L14.17 2.17A2 2 0 0012.757 2H11.24a2 2 0 00-1.414.586L8.586 4.414A2 2 0 017.172 5H4a2 2 0 00-2 2v12a2 2 0 002 2h19a0 0 0 000-0z" stroke="#374151" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="12" cy="13" r="3" stroke="#374151" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </Interactive>
+
+          <Interactive>
+            <button
+              aria-label="Ask Coach"
+              onClick={() => console.log('Ask Coach')}
+              style={{
+                background: PRIMARY,
+                color: '#fff',
+                border: 'none',
+                padding: isMobile ? '10px 14px' : '12px 18px',
+                borderRadius: 14,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: '0 10px 30px rgba(61,187,107,0.16)',
+                cursor: 'pointer',
+                minWidth: 140,
+                justifyContent: 'center'
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                <path d="M8 2v4l-6 6v6c0 1.1.9 2 2 2h6v-6h4v6h6c1.1 0 2-.9 2-2v-6l-6-6V2h-8z" fill="rgba(255,255,255,0.95)" />
+                <path d="M8 2v4l-6 6v6c0 1.1.9 2 2 2h6v-6h4v6h6c1.1 0 2-.9 2-2v-6l-6-6V2h-8z" stroke="rgba(255,255,255,0.95)" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span style={{ fontSize: isMobile ? 14 : 15 }}>Ask Coach</span>
+            </button>
+          </Interactive>
+        </div>
       </div>
     </Container>
   )
