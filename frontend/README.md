@@ -1,3 +1,64 @@
+# Nutrio Frontend
+
+This is the frontend for the Nutrio application, built with React, TypeScript, and Vite.
+
+## Setup and Run
+
+To get the frontend running locally:
+
+1.  **Clone the repository**
+
+2.  **Install dependencies**
+
+    ```bash
+    cd frontend
+    npm install
+    ```
+
+3.  **Run the application**
+
+    ```bash
+    npm run dev
+    ```
+
+    The application will be running on `http://localhost:5173`.
+
+## Contributing
+
+We welcome contributions to the Nutrio frontend! To contribute, please follow these steps:
+
+1.  **Fork the repository**
+
+2.  **Create a new branch**
+
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+
+3.  **Make your changes**
+
+4.  **Lint your code**
+
+    ```bash
+    npm run lint
+    ```
+
+5.  **Commit your changes**
+
+    ```bash
+    git commit -m "feat: your feature name"
+    ```
+
+6.  **Push to your branch**
+
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+
+7.  **Create a pull request**
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
