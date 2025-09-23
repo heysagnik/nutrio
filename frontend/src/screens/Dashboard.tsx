@@ -1,58 +1,29 @@
-import { useMemo, useRef, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Button, Container, Subtext, Card, PRIMARY, Interactive, Heading } from '../ui'
-import { useBreakpoint } from '../utils/useBreakpoint'
-
-type RingProps = { size?: number; stroke?: number; value: number; color: string; track?: string; label?: string }
-
-function ProgressRing({ size = 64, stroke = 8, value, color, track = '#eef2f7', label }: RingProps) {
-  const radius = (size - stroke) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (Math.max(0, Math.min(100, value)) / 100) * circumference
-
-  const displayValue = Math.round(value)
-  const valueFontSize = Math.max(12, Math.round(size * 0.28))
-  const percentFontSize = Math.max(10, Math.round(size * 0.14))
-  const labelFontSize = Math.max(10, Math.round(size * 0.13))
-
-  return (
-    <div style={{ display: 'grid', placeItems: 'center', position: 'relative' }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size / 2} cy={size / 2} r={radius} stroke={track} strokeWidth={stroke} fill="none" />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          fill="none"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={offset}
-        />
-      </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span style={{ fontWeight: 700, color: '#111827', fontSize: valueFontSize, lineHeight: 1 }}>{displayValue}</span>
-            <span style={{ fontWeight: 600, color: '#6b7280', fontSize: percentFontSize, lineHeight: 1 }}>%</span>
-          </div>
-          {label ? <div style={{ fontSize: labelFontSize, color: '#6b7280' }}>{label}</div> : null}
-        </div>
-      </div>
-    </div>
-  )
-}
+import { PRIMARY } from '../ui'
+import { useApi } from '../utils/api'
+import { MobileDateScroller, type DayItem } from '../components/MobileDateScroller'
+import { MobileMealsList } from '../components/MobileMealsList'
+import { MobileNutrition } from '../components/MobileNutrition'
+import { MobileBottomNav } from '../components/MobileBottomNav'
+import { CoachChat } from '../components/CoachChat'
+import type { PlanItem } from '../types/recommendations'
+import { MealLogModal } from '../components/MealLogModal'
+import { RecipeModal } from '../components/RecipeModal'
+import { ProfileModal } from '../components/ProfileModal'
 
 export function Dashboard() {
   const { user, logout } = useAuth()
-  const { isMobile, isTablet, isDesktop } = useBreakpoint()
+  const { getDailyPlan, logMealImage, coachChat, getProfile, updateProfile, updateGoals } = useApi()
+  const [loggedItems, setLoggedItems] = useState<PlanItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement | null>(null)
 
-  const ringSize = isMobile ? 80 : isTablet ? 100 : 140
-  const ringStroke = isMobile ? 8 : isTablet ? 10 : 12
-  const containerMax = isMobile ? 680 : isTablet ? 960 : 1400
+  const PLAN_KEY = (uid: string, iso: string) => `nutrio_plan_${uid}_${iso}`
+  const LOGS_KEY = (uid: string, iso: string) => `nutrio_logs_${uid}_${iso}`
 
-  const week = useMemo(() => {
+  const buildWeek = () => {
     const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const today = new Date()
     const dayIndex = today.getDay()
@@ -61,336 +32,338 @@ export function Dashboard() {
     return Array.from({ length: 7 }).map((_, i) => {
       const d = new Date(start)
       d.setDate(start.getDate() + i)
-      return {
-        d: labels[i],
-        n: d.getDate(),
-        iso: d.toISOString().slice(0, 10),
-        active: d.toDateString() === today.toDateString(),
-      }
+      const iso = d.toISOString().slice(0, 10)
+      return { d: labels[i], n: d.getDate(), iso, active: d.toDateString() === today.toDateString() } as DayItem
     })
-  }, [])
+  }
 
-  const calendarRef = useRef<HTMLDivElement | null>(null)
-  const [isReady, setIsReady] = useState(false)
+  const [days, setDays] = useState<DayItem[]>(buildWeek())
+  const selectedIso = days.find((d) => d.active)?.iso || new Date().toISOString().slice(0, 10)
+
+  const handleSelectDay = (iso: string) => {
+    setDays((prev) => prev.map((d) => ({ ...d, active: d.iso === iso })))
+  }
+
+  const loadLogs = () => {
+    if (!user) return
+    try {
+      const raw = localStorage.getItem(LOGS_KEY(user.id, selectedIso))
+      const arr = raw ? (JSON.parse(raw) as PlanItem[]) : []
+      setLoggedItems(Array.isArray(arr) ? arr : [])
+    } catch {
+      setLoggedItems([])
+    }
+  }
+
+  const saveLogs = (items: PlanItem[]) => {
+    if (!user) return
+    localStorage.setItem(LOGS_KEY(user.id, selectedIso), JSON.stringify(items))
+  }
+
+  const loadPlanFromCacheOrFetch = async () => {
+    if (!user) return
+    try {
+      const cached = localStorage.getItem(PLAN_KEY(user.id, selectedIso))
+      if (cached) return
+      const res = await getDailyPlan(selectedIso)
+      const items = res.meal_plan.items || []
+      localStorage.setItem(PLAN_KEY(user.id, selectedIso), JSON.stringify(items))
+    } catch (e: any) {
+      // keep silent; plan is optional for UI now
+    }
+  }
+
+  const recommendedItems = (() => {
+    if (!user) return [] as PlanItem[]
+    try {
+      const raw = localStorage.getItem(PLAN_KEY(user.id, selectedIso))
+      const arr = raw ? (JSON.parse(raw) as PlanItem[]) : []
+      return Array.isArray(arr) ? arr : []
+    } catch {
+      return []
+    }
+  })()
+
+  const [recipeOpen, setRecipeOpen] = useState(false)
+  const [recipeItem, setRecipeItem] = useState<PlanItem | null>(null)
+  const openRecipe = (it: PlanItem) => { setRecipeItem(it); setRecipeOpen(true) }
+  const closeRecipe = () => { setRecipeOpen(false); setRecipeItem(null) }
+
+  const refreshAll = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      loadLogs()
+      await loadPlanFromCacheOrFetch()
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const el = calendarRef.current
-    if (!el) return
-    // set initial scroll to the middle copy
-    const totalWidth = el.scrollWidth
-    const third = totalWidth / 3
-    el.scrollLeft = third
-    setIsReady(true)
+    refreshAll()
+    return () => {}
+  }, [user, selectedIso])
 
-    let ticking = false
-    const onScroll = () => {
-      if (!el || !isReady) return
-      if (ticking) return
-      ticking = true
-      requestAnimationFrame(() => {
-        const max = el.scrollWidth
-        const third = max / 3
-        // if scrolled near the start, jump forward by one third
-        if (el.scrollLeft < third * 0.5) {
-          el.scrollLeft += third
-        } else if (el.scrollLeft > third * 2.5) {
-          // if near the end, jump back by one third
-          el.scrollLeft -= third
-        }
-        ticking = false
-      })
+  const handleCamera = () => {
+    fileRef.current?.click()
+  }
+
+  const [showCoach, setShowCoach] = useState(false)
+  const handleCoach = () => setShowCoach(true)
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return
+    const file = e.target.files?.[0]
+    if (!file) return
+    const mealType = window.prompt('Meal type? (breakfast, lunch, dinner, snack)', 'lunch') || 'lunch'
+    try {
+      setLoading(true)
+      const res = await logMealImage({ user_id: user.id, meal_type: mealType, meal_time: new Date().toISOString(), image: file }) as any
+      const parsed = res?.parsed_nutritional_data || {}
+      const next: PlanItem = {
+        id: String(res?.meal_id || Date.now()),
+        name: 'Logged Meal',
+        meal_type: mealType as any,
+        calories: parsed?.calories || 0,
+        protein_g: parsed?.protein_g || 0,
+        carbs_g: parsed?.carbs_g || 0,
+        fat_g: parsed?.fat_g || 0,
+        image_url: URL.createObjectURL(file),
+      }
+      const updated = [next, ...loggedItems]
+      setLoggedItems(updated)
+      saveLogs(updated)
+    } catch (err) {
+      setError('Failed to upload image')
+    } finally {
+      if (fileRef.current) fileRef.current.value = ''
+      setLoading(false)
     }
+  }
 
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [week, isReady])
+  const totals = (() => {
+    const calories = loggedItems.reduce((sum, i) => sum + (i.calories || 0), 0)
+    const protein = loggedItems.reduce((sum, i) => sum + (i.protein_g || 0), 0)
+    const water = Math.min(10, Math.max(0, loggedItems.length))
+    return { calories, protein, water }
+  })()
+
+  const LAST_TYPE_KEY = 'nutrio_last_meal_type'
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalType, setModalType] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('lunch')
+  useEffect(() => {
+    try {
+      const last = localStorage.getItem(LAST_TYPE_KEY) as any
+      if (last === 'breakfast' || last === 'lunch' || last === 'dinner' || last === 'snack') setModalType(last)
+    } catch {}
+  }, [])
+  const openMealType = (t: 'breakfast' | 'lunch' | 'dinner' | 'snack') => {
+    setModalType(t)
+    setModalOpen(true)
+  }
+  const closeMealModal = () => setModalOpen(false)
+  const itemsForType = (t: string) => loggedItems.filter((i) => (i.meal_type || '').toLowerCase() === t)
+  const editMealFromModal = async (item: PlanItem, payload: { foodName: string; amount: string; mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack' }) => {
+    const updated: PlanItem = { ...item, name: payload.foodName, meal_type: payload.mealType }
+    const next = loggedItems.map((i) => (i.id === item.id ? updated : i))
+    setLoggedItems(next)
+    saveLogs(next)
+    localStorage.setItem(LAST_TYPE_KEY, payload.mealType)
+  }
+
+  const deleteMealFromModal = async (item: PlanItem) => {
+    const next = loggedItems.filter((i) => i.id !== item.id)
+    setLoggedItems(next)
+    saveLogs(next)
+  }
+
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileData, setProfileData] = useState<any>(null)
+  const onOpenProfile = async () => {
+    if (!user) return
+    try {
+      setLoading(true)
+      setError(null)
+      const p = await getProfile(user.id)
+      setProfileData(p)
+      setProfileOpen(true)
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load profile')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onSaveProfile = async ({ profile, goals }: { profile: any; goals: any }) => {
+    if (!user) return
+    setLoading(true)
+    setError(null)
+    try {
+      await updateProfile(user.id, { profile })
+      await updateGoals(user.id, goals)
+      const refreshed = await getProfile(user.id)
+      setProfileData(refreshed)
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save profile')
+      throw e
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
-    <Container style={{ maxWidth: containerMax, paddingTop: 20, paddingBottom: 40, paddingLeft: 20, paddingRight: 20 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottom: '1px solid #f3f4f6', marginBottom: 20 }}>
+    <div style={{ 
+      minHeight: '100vh', 
+      background: '#fafbfc',
+      paddingTop: 'env(safe-area-inset-top, 0px)',
+      paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)'
+    }}>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} style={{ display: 'none' }} />
+      {/* Mobile Header */}
+      <div style={{ 
+        position: 'sticky', 
+        top: 'env(safe-area-inset-top, 0px)', 
+        zIndex: 50, 
+        background: '#fff', 
+        borderBottom: '1px solid #e5e7eb',
+        padding: '12px 16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 20,
-              background: 'lightgreen',
-              display: 'grid',
-              placeItems: 'center',
-              fontWeight: 600,
-              color: '#111827',
-              fontSize: 14
-            }}
-            aria-label="avatar"
-          >
-            {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
-          </div>
-          <div>
-            <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 600, color: '#111827' }}>
-              {user?.name || user?.email}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            type="button"
-            aria-label="Notifications"
-            style={{
+            <button onClick={onOpenProfile} aria-label="Profile" style={{
               width: 40,
               height: 40,
-              borderRadius: 10,
-              border: `1px solid #eaeef0`,
-              background: '#fff',
+              borderRadius: 12,
+              background: `linear-gradient(135deg, ${PRIMARY}20, ${PRIMARY}10)`,
+              border: `2px solid ${PRIMARY}30`,
               display: 'grid',
               placeItems: 'center',
-              cursor: 'pointer',
-              position: 'relative'
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5" stroke="#6b7280" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M13.73 21a2 2 0 01-3.46 0" stroke="#6b7280" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span style={{ position: 'absolute', right: 6, top: 6, width: 8, height: 8, borderRadius: 999, background: '#ef4444', border: '2px solid #fff' }} />
+              fontWeight: 700,
+              color: PRIMARY,
+              fontSize: 16,
+              cursor: 'pointer'
+            }}>
+            {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
           </button>
-          <Button variant="ghost" onClick={logout} style={{ padding: '8px 12px' }}>Logout</Button>
-        </div>
-      </div>
- 
-     
-      <div
-        style={{
-          display: 'grid',
-          gap: isMobile ? 12 : 20,
-          gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(8, 1fr)' : 'repeat(12, 1fr)',
-          alignItems: 'start',
-        }}
-      >
-        {/* Tile: Calendar (full width) */}
-        <div style={{ gridColumn: isMobile ? 'auto' : '1 / -1', marginBottom: isMobile ? 8 : 16 }}>
-          {/* Calendar wrapper: position relative to host fade overlays */}
-          <div style={{ position: 'relative' }}>
-            <div
-              ref={(el) => { calendarRef.current = el }}
-              style={{
-                display: 'flex',
-                gap: isMobile ? 8 : isTablet ? 12 : 16,
-                paddingBottom: 8,
-                justifyContent: 'flex-start',
-                overflowX: 'auto',
-                scrollbarWidth: 'none',
-                WebkitOverflowScrolling: 'touch',
-              }}
-            >
-              {/* Duplicate the week three times to enable seamless looping */}
-              {[0, 1, 2].map((copy) =>
-                week.map((w) => (
-                  <Interactive key={`${copy}-${w.iso}`}>
-                    <div
-                      style={{
-                        flex: isMobile ? '0 0 84px' : isTablet ? '0 0 120px' : '0 0 160px',
-                        minWidth: isMobile ? 72 : isTablet ? 130 : 170,
-                        padding: isMobile ? '8px 12px' : isTablet ? '10px 14px' : '12px 16px',
-                        borderRadius: 16,
-                        textAlign: 'center',
-                        border: `1px solid ${w.active ? 'transparent' : '#e5e7eb'}`,
-                        background: w.active ? PRIMARY + '16' : '#fff',
-                        color: w.active ? '#111827' : '#6b7280',
-                        boxShadow: w.active ? 'inset 0 0 0 2px ' + PRIMARY : undefined,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{ fontSize: isMobile ? 12 : 13 }}>{w.d}</div>
-                      <div style={{ fontWeight: 600, marginTop: 6 }}>{w.n}</div>
-                    </div>
-                  </Interactive>
-                ))
-              )}
+          <div>
+              <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Good Morning
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#1f2937', marginTop: 2 }}>
+                {user?.name?.split(' ')[0] || 'User'}
+              </div>
             </div>
-
-            {/* Fade overlays on both ends */}
-            <div
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 48,
-                pointerEvents: 'none',
-                background: 'linear-gradient(90deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)',
-              }}
-            />
-            <div
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: 48,
-                pointerEvents: 'none',
-                background: 'linear-gradient(270deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)',
-              }}
-            />
           </div>
-        </div>
-
-        {/* Tile: Meals (large) */}
-        <div style={{ gridColumn: isMobile ? 'auto' : isDesktop ? 'span 7' : '1 / -1' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '8px 0 12px' }}>
-            <Heading>Meals</Heading>
-            <Subtext>4</Subtext>
-          </div>
-          <div
+          
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
             style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-              gap: isMobile ? 12 : 16,
-            }}
-          >
-            <Interactive>
-              <div style={{ background: '#eafff4', borderRadius: 18, padding: isMobile ? 12 : 18, border: '1px solid #d1fae5' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: isMobile ? 48 : 64, height: isMobile ? 48 : 64, borderRadius: 16, background: '#fff', display: 'grid', placeItems: 'center', fontSize: isMobile ? 20 : 28 }}>🍣</div>
-                  <div style={{ fontWeight: 700, color: '#065f46', fontSize: isMobile ? 16 : 18 }}>Salmon
-                    <div style={{ fontWeight: 600, color: '#065f46', fontSize: isMobile ? 14 : 16 }}>Poke Bowl</div>
-                  </div>
-                </div>
-              </div>
-            </Interactive>
-            <Interactive>
-              <div style={{ background: '#fff3e6', borderRadius: 18, padding: isMobile ? 12 : 18, border: '1px solid #ffe0b3' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: isMobile ? 48 : 64, height: isMobile ? 48 : 64, borderRadius: 16, background: '#fff', display: 'grid', placeItems: 'center', fontSize: isMobile ? 20 : 28 }}>🧃</div>
-                  <div style={{ fontWeight: 700, color: '#92400e', fontSize: isMobile ? 16 : 18 }}>Sunkist
-                    <div style={{ fontWeight: 600, color: '#92400e', fontSize: isMobile ? 14 : 16 }}>Orange Juice</div>
-                  </div>
-                </div>
-              </div>
-            </Interactive>
-            <Interactive onClick={() => console.log('Add meal clicked')}>
-              <div style={{ background: '#f9fafb', borderRadius: 18, padding: isMobile ? 12 : 18, border: '2px dashed #d1d5db', cursor: 'pointer' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: isMobile ? 48 : 64, height: isMobile ? 48 : 64, borderRadius: 16, background: '#fff', display: 'grid', placeItems: 'center', fontSize: isMobile ? 20 : 28, border: '1px solid #e5e7eb' }}>+</div>
-                  <div style={{ fontWeight: 600, color: '#6b7280', fontSize: isMobile ? 16 : 18 }}>Add Meal
-                    <div style={{ fontWeight: 400, color: '#9ca3af', fontSize: isMobile ? 14 : 16 }}>Click to add</div>
-                  </div>
-                </div>
-              </div>
-            </Interactive>
-            <Interactive onClick={() => console.log('Add meal clicked')}>
-              <div style={{ background: '#f9fafb', borderRadius: 18, padding: isMobile ? 12 : 18, border: '2px dashed #d1d5db', cursor: 'pointer' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: isMobile ? 48 : 64, height: isMobile ? 48 : 64, borderRadius: 16, background: '#fff', display: 'grid', placeItems: 'center', fontSize: isMobile ? 20 : 28, border: '1px solid #e5e7eb' }}>+</div>
-                  <div style={{ fontWeight: 600, color: '#6b7280', fontSize: isMobile ? 16 : 18 }}>Add Meal
-                    <div style={{ fontWeight: 400, color: '#9ca3af', fontSize: isMobile ? 14 : 16 }}>Click to add</div>
-                  </div>
-                </div>
-              </div>
-            </Interactive>
-          </div>
-
-        </div>
-        
-        {/* Tile: Today's Nutrition (prominent) */}
-        <div style={{ gridColumn: isMobile ? 'auto' : isDesktop ? 'span 5' : isTablet ? 'span 8' : 'auto' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '8px 0 12px' }}>
-            <Heading>Today's Nutrition</Heading>
-            
-        </div>
-          <Card style={{ padding: isMobile ? 12 : 24, boxShadow: isDesktop ? '0 14px 40px rgba(16,24,40,0.08)' : undefined }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 12 }}>
-              <div style={{ display: 'grid', placeItems: 'center', gap: 10, flex: '1 1 80px' }}>
-                <ProgressRing value={62} color="#f59e0b" label="Protein" size={ringSize} stroke={ringStroke} />
-                <div style={{ fontSize: isMobile ? 12 : 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span role="img" aria-label="meat">🥩</span> Protein
-                </div>
-              </div>
-              <div style={{ display: 'grid', placeItems: 'center', gap: 10, flex: '1 1 80px' }}>
-                <ProgressRing value={82} color="#16a34a" label="Calories" size={ringSize} stroke={ringStroke} />
-                <div style={{ fontSize: isMobile ? 12 : 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span role="img" aria-label="calories">🥑</span> Calories
-                </div>
-              </div>
-              <div style={{ display: 'grid', placeItems: 'center', gap: 10, flex: '1 1 80px' }}>
-                <ProgressRing value={90} color="#0ea5e9" label="Hydration" size={ringSize} stroke={ringStroke} />
-                <div style={{ fontSize: isMobile ? 12 : 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span role="img" aria-label="water">💧</span> Hydration
-                </div>
-              </div>
-            </div>
-        </Card>
-        </div>
-
-        
-      </div>
-
-      {/* Floating Quick Action Footer */}
-      <div style={{
-        position: 'fixed',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        bottom: isMobile ? 18 : 26,
-        zIndex: 60,
-        width: '100%',
-        maxWidth: 420,
-        padding: '0 16px',
-      }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'center' }}>
-          <Interactive>
-            <button
-              aria-label="Open camera"
-              onClick={() => console.log('Open camera')}
-              style={{
-                width: isMobile ? 48 : 52,
-                height: isMobile ? 48 : 52,
-                borderRadius: 999,
-                border: '1px solid #e6eef3',
-                background: '#fff',
-                display: 'grid',
-                placeItems: 'center',
-                boxShadow: '0 8px 20px rgba(16,24,40,0.06)',
-                cursor: 'pointer',
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                <path d="M23 19V7a2 2 0 00-2-2h-3.17a2 2 0 01-1.414-.586L14.17 2.17A2 2 0 0012.757 2H11.24a2 2 0 00-1.414.586L8.586 4.414A2 2 0 017.172 5H4a2 2 0 00-2 2v12a2 2 0 002 2h19a0 0 0 000-0z" stroke="#374151" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="12" cy="13" r="3" stroke="#374151" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </Interactive>
-
-          <Interactive>
-            <button
-              aria-label="Ask Coach"
-              onClick={() => console.log('Ask Coach')}
-              style={{
-                background: PRIMARY,
-                color: '#fff',
+                width: 44,
+                height: 44,
+              borderRadius: 12,
                 border: 'none',
-                padding: isMobile ? '10px 14px' : '12px 18px',
-                borderRadius: 14,
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                boxShadow: '0 10px 30px rgba(61,187,107,0.16)',
-                cursor: 'pointer',
-                minWidth: 140,
-                justifyContent: 'center'
+                background: '#f8fafc',
+              display: 'grid',
+              placeItems: 'center',
+                position: 'relative',
+                cursor: 'pointer'
               }}
+              aria-label="Notifications"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                <path d="M8 2v4l-6 6v6c0 1.1.9 2 2 2h6v-6h4v6h6c1.1 0 2-.9 2-2v-6l-6-6V2h-8z" fill="rgba(255,255,255,0.95)" />
-                <path d="M8 2v4l-6 6v6c0 1.1.9 2 2 2h6v-6h4v6h6c1.1 0 2-.9 2-2v-6l-6-6V2h-8z" stroke="rgba(255,255,255,0.95)" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5" 
+                  stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M13.73 21a2 2 0 01-3.46 0" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span style={{ fontSize: isMobile ? 14 : 15 }}>Ask Coach</span>
-            </button>
-          </Interactive>
+              <div style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#ef4444'
+              }} />
+          </button>
+          </div>
         </div>
       </div>
-    </Container>
+
+      {/* Mobile Content */}
+      <div style={{ padding: '16px' }}>
+        <MobileDateScroller days={days} onSelect={handleSelectDay} />
+        {loading ? (
+          <div style={{ fontSize: 13, color: '#6b7280', padding: 12 }}>Loading…</div>
+        ) : error ? (
+          <div style={{ fontSize: 13, color: '#b91c1c', padding: 12 }}>{error}</div>
+        ) : (
+          <MobileMealsList items={loggedItems} onAdd={() => openMealType('lunch')} onOpenType={openMealType} />
+        )}
+        <MobileNutrition
+          caloriesConsumed={totals.calories}
+          calorieTarget={2000}
+          proteinConsumed={totals.protein}
+          proteinTarget={100}
+          waterConsumed={totals.water}
+          waterTarget={10}
+        />
+
+        <div style={{ marginTop: 12 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1f2937', margin: '0 0 12px 0' }}>Recommended Today</h2>
+          {recommendedItems.length === 0 ? (
+            <div style={{ fontSize: 13, color: '#6b7280' }}>No recommendations cached. They will appear here once available.</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {recommendedItems.map((it) => (
+                <button key={it.id} onClick={() => openRecipe(it)} style={{ textAlign: 'left', border: '1px solid #e5e7eb', background: '#fff', padding: 12, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#111827' }}>{it.name}</div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{(it.meal_type || '').toUpperCase()} • {it.calories || 0} kcal</div>
+                  </div>
+                  <div style={{ fontSize: 20, color: '#d1d5db' }}>›</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <MobileBottomNav onCamera={handleCamera} onCoach={handleCoach} />
+
+      {showCoach ? (
+        <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 70, display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ fontWeight: 700, color: '#111827' }}>AI Coach</div>
+            <button onClick={() => setShowCoach(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280', fontSize: 22 }}>×</button>
+          </div>
+          <CoachChat
+            userId={user?.id || 'anon'}
+            dateIso={selectedIso}
+            onSend={async (text) => {
+              const res = await coachChat(text)
+              return String((res as any)?.response_text || (res as any)?.reply || (res as any)?.message || 'Okay')
+            }}
+          />
+        </div>
+                    ) : null}
+
+      <MealLogModal
+        open={modalOpen}
+        mealType={modalType}
+        items={itemsForType(modalType)}
+        onClose={closeMealModal}
+        onEdit={editMealFromModal}
+        onDelete={deleteMealFromModal}
+      />
+
+      <RecipeModal open={recipeOpen} item={recipeItem} onClose={closeRecipe} />
+      <ProfileModal open={profileOpen} profile={profileData} onClose={() => setProfileOpen(false)} onSave={onSaveProfile} onLogout={() => { setProfileOpen(false); logout(); }} />
+    </div>
   )
 }
+
 
 

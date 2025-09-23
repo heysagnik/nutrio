@@ -16,7 +16,7 @@ export function Container({ children, center = false, ...rest }: { children: Rea
         margin: '0 auto',
         padding: 16,
         width: '100%',
-        maxWidth: 960,
+        maxWidth: rest.style?.maxWidth ?? 480,
         display: center ? 'flex' : undefined,
         minHeight: center ? '100vh' : undefined,
         alignItems: center ? 'center' : undefined,
